@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <title>Chaos auf der Konfifreizeit</title>
+  <style>
+    body { font-family: sans-serif; background: #eef2f7; padding: 2rem; }
+    .tab { margin-bottom: 1rem; }
+    .tab button { margin-right: 1rem; padding: 0.5rem 1rem; }
+    .container {
+      background: white; padding: 2rem; border-radius: 12px; max-width: 900px; margin: auto;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+    .question-block { margin-bottom: 1.5rem; border-bottom: 1px solid #ccc; padding-bottom: 1rem; }
+    input[type="text"], textarea, select, button {
+      margin: 0.5rem 0; padding: 0.5rem; width: 100%; box-sizing: border-box;
+    }
+    .dropzone {
+      border: 2px dashed #aaa; padding: 1rem; text-align: center; color: #666;
+      cursor: pointer; margin-top: 0.5rem;
+    }
+    .dropzone img { max-width: 100%; max-height: 200px; margin-top: 0.5rem; }
+    .hidden { display: none; }
+    img.preview { max-width: 100%; margin: 1rem 0; }
+    table { width: 100%; border-collapse: collapse; margin-top: 2rem; }
+    th, td { border: 1px solid #ccc; padding: 0.5rem; text-align: left; }
+  </style>
+</head>
+<body>
+  <div class="tab">
+    <button onclick="requestAdminAccess()">🔧 Admin</button>
+    <button onclick="showTab('game')">🎮 Spiel</button>
+  </div>
+
+  <div class="container" id="admin" style="display:none;">
+    <h2>🔧 Adminbereich – Chaos auf der Konfifreizeit</h2>
+    <div id="editor"></div>
+    <button onclick="addStation()">➕ Neue Station</button>
+    <button onclick="saveData()">💾 Speichern</button>
+    <h3>📋 Team-Rangliste</h3>
+    <div id="log"></div>
+  </div>
+
+  <div class="container" id="game" style="display:none;">
+    <h2>🎮 Chaos auf der Konfifreizeit</h2>
+    <div id="teamInput">
+      <label>Teamname eingeben:
+        <input type="text" id="teamName" placeholder="z. B. Die Bibelchecker">
+      </label>
+      <button onclick="startGame()">Los geht's!</button>
+    </div>
+    <div id="gameArea" style="display:none;"></div>
+  </div>
+
+  <script>
+    let stations = JSON.parse(localStorage.getItem("stations")) || [];
+    let teamLogs = JSON.parse(localStorage.getItem("teamLogs")) || [];
+    let currentStation = 0;
+    let team = "";
+    let startTime;
+
+    function requestAdminAccess() {
+      const password = prompt("Bitte Admin-Passwort eingeben:");
+      if (password === "Jump25") {
+        showTab("admin");
+      } else {
+        alert("Falsches Passwort!");
+      }
+    }
+
+    function showTab(tab) {
+      document.getElementById("admin").style.display = tab === "admin" ? "block" : "none";
+      document.getElementById("game").style.display = tab === "game" ? "block" : "none";
+      if (tab === "admin") renderEditor();
+      if (tab === "game") {
+        currentStation = 0;
+        document.getElementById("teamInput").style.display = "block";
+        document.getElementById("gameArea").style.display = "none";
+      }
+    }
+
+    function startGame() {
+      team = document.getElementById("teamName").value.trim();
+      if (!team) {
+        alert("Bitte einen Teamnamen eingeben!");
+        return;
+      }
+      startTime = Date.now();
+      document.getElementById("teamInput").style.display = "none";
+      document.getElementById("gameArea").style.display = "block";
+      renderStation();
+    }
+
+    function renderEditor() {
+      const editor = document.getElementById("editor");
+      editor.innerHTML = "";
+      stations.forEach((s, i) => {
+        const div = document.createElement("div");
+        div.innerHTML = `<h3>Station ${i + 1}</h3>`;
+
+        s.questions.forEach((q, qi) => {
+          const qDiv = document.createElement("div");
+          qDiv.className = "question-block";
+          qDiv.innerHTML = `
+            <label>Frage ${qi + 1}: <input value="${q.text}" onchange="stations[${i}].questions[${qi}].text=this.value"></label>
+            <label>Antwort: <input value="${q.answer}" onchange="stations[${i}].questions[${qi}].answer=this.value"></label>
+            <div class="dropzone" ondragover="event.preventDefault()" onclick="document.getElementById('file${i}_${qi}').click()">
+              <input type="file" id="file${i}_${qi}" class="hidden" accept="image/*" onchange="handleImageUpload(event, ${i}, ${qi})">
+              <div>Bild hierher ziehen oder klicken</div>
+              ${q.image ? `<img src="${q.image}" class="preview">` : ""}
+            </div>
+          `;
+          div.appendChild(qDiv);
+        });
+
+        if (s.questions.length < 5) {
+          const btn = document.createElement("button");
+          btn.textContent = "➕ Frage hinzufügen";
+          btn.onclick = () => { s.questions.push({ text: "", answer: "", image: "" }); renderEditor(); };
+          div.appendChild(btn);
+        }
+
+        const delBtn = document.createElement("button");
+        delBtn.textContent = "🗑️ Station löschen";
+        delBtn.onclick = () => { stations.splice(i, 1); renderEditor(); };
+        div.appendChild(delBtn);
+
+        editor.appendChild(div);
+      });
+      renderLog();
+    }
+
+    function renderLog() {
+      const log = document.getElementById("log");
+      if (teamLogs.length === 0) {
+        log.innerHTML = "<p>Keine Teams haben bisher gespielt.</p>";
+        return;
+      }
+      const sorted = [...teamLogs].sort((a, b) => a.time - b.time);
+      log.innerHTML = `<table><tr><th>Platz</th><th>Teamname</th><th>Zeit</th></tr>${sorted.map((t, i) => `
+        <tr><td>${i + 1}</td><td>${t.name}</td><td>${(t.time / 1000).toFixed(1)} s</td></tr>
+      `).join("")}</table>`;
+    }
+
+    function handleImageUpload(event, si, qi) {
+      const file = event.target.files[0];
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        stations[si].questions[qi].image = e.target.result;
+        renderEditor();
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function addStation() {
+      stations.push({ questions: [{ text: "", answer: "", image: "" }] });
+      renderEditor();
+    }
+
+    function saveData() {
+      localStorage.setItem("stations", JSON.stringify(stations));
+      localStorage.setItem("teamLogs", JSON.stringify(teamLogs));
+      alert("Gespeichert!");
+    }
+
+    function renderStation() {
+      const area = document.getElementById("gameArea");
+      area.innerHTML = `<h3>Station ${currentStation + 1} – Team: ${team}</h3>`;
+
+      if (currentStation >= stations.length) {
+        const totalTime = Date.now() - startTime;
+        teamLogs.push({ name: team, time: totalTime });
+        localStorage.setItem("teamLogs", JSON.stringify(teamLogs));
+        area.innerHTML = `<h3>🎉 Team ${team}, ihr habt alle Stationen geschafft!</h3>
+                          <p>Benötigte Zeit: ${(totalTime / 1000).toFixed(1)} Sekunden</p>`;
+        return;
+      }
+
+      const station = stations[currentStation];
+      const form = document.createElement("div");
+      station.questions.forEach((q, qi) => {
+        const div = document.createElement("div");
+        div.className = "question-block";
+        if (q.image) div.innerHTML += `<img src="${q.image}" alt="Fragebild" class="preview">`;
+        div.innerHTML += `<p><strong>Frage ${qi + 1}:</strong> ${q.text}</p><input type="text" id="answer${qi}">`;
+        form.appendChild(div);
+      });
+
+      const btn = document.createElement("button");
+      btn.textContent = "Antworten prüfen";
+      btn.onclick = () => {
+        const correct = station.questions.every((q, i) => {
+          const a = document.getElementById(`answer${i}`).value.trim().toLowerCase();
+          return a.includes(q.answer.trim().toLowerCase());
+        });
+        if (correct) {
+          alert("✅ Richtig! Nächste Station.");
+          currentStation++;
+          renderStation();
+        } else {
+          alert("❌ Nicht alle Antworten stimmen.");
+        }
+      };
+      form.appendChild(btn);
+      area.appendChild(form);
+    }
+
+    showTab("game");
+  </script>
+</body>
+</html>
